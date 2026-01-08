@@ -1,7 +1,0 @@
-def admin_only(func):
-    def wrapper(message):
-        if message.from_user.id in ADMIN_IDS:
-            return func(message)
-        else:
-            bot.reply_to(message, "❌ ONLY OWNER CAN USE THIS COMMAND.")
-    return wrapper
